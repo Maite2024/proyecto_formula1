@@ -1,0 +1,513 @@
+---
+title: "Analisis Exploratorio de Datos sobre Fórmula 1"
+authors: Aliendro Maite
+lang: es
+format:
+  html:
+    toc: true
+    self-contained: true
+  pdf:
+    toc: false
+    number-sections: false
+    colorlinks: true
+editor: visual
+---
+
+```{r, message=FALSE, warning=FALSE}
+#| echo: false
+library(tidyverse)
+library(scales) #la descargué para los porcentajes
+library(gt) #libreria para hacer tablas
+#Cargo los datasets
+
+carreras <- read.csv("carreras.csv")
+conductores <- read.csv("conductores.csv")
+constructores <- read.csv("constructores.csv")
+resultados <- read.csv("resultados.csv")
+```
+
+# *Introducción*
+
+En este estudio se analiza un conjunto de datos referido a campeonatos de la *Fórmula 1*, comprendidos entre los años 2018 y 2023. Se cuenta con las siguientes cuatro tablas.
+
+**Tabla 1.** `carreras.csv`
+
+| Variable | Descripción |
+|:-----------------------------------|:-----------------------------------|
+| `idCarrera` | Identificador de la carrera. |
+| `año` | Año de realización de la carrera. |
+| `ronda` | Orden de la carrera dentro del campeonato (año). |
+| `nombre` | Nombre de la carrera. |
+| `fecha` | Fecha de realización de la carrera. |
+| `hora` | Hora de realización de la carrera. |
+| `tempAire` | Temperatura atmosférica media durante la carrera (en grados Celsius). |
+| `tempPista` | Temperatura media de la pista durante la carrera (en grados Celsius). |
+| `lluvia` | Indicador de presencia de lluvia durante la carrera. |
+
+**Tabla 2.** `conductores.csv`
+
+| Variable       | Descripción                        |
+|:---------------|:-----------------------------------|
+| `idConductor`  | Identificador del conductor.       |
+| `codigo`       | Código asociado al conductor.      |
+| `nombre`       | Nombre de pila del conductor.      |
+| `apellido`     | Apellido del conductor.            |
+| `fechaNac`     | Fecha de nacimiento del conductor. |
+| `nacionalidad` | Nacionalidad del conductor.        |
+
+**Tabla 3.** `constructores.csv`
+
+| Variable        | Descripción                    |
+|:----------------|:-------------------------------|
+| `idConstructor` | Identificador de la escudería. |
+| `nombre`        | Nombre de la escudería.        |
+| `nacionalidad`  | Nacionalidad de la escudería.  |
+
+**Tabla 4.** `resultados.csv`
+
+| Variable | Descripción |
+|:-----------------------------------|:-----------------------------------|
+| `idResultado` | Identificador del resultado. |
+| `idCarrera` | Identificador de la carrera. |
+| `idConductor` | Identificador del conductor. |
+| `idConstructor` | Identificador de la escudería. |
+| `posInicial` | Posición del conductor al inicio de la carrera. |
+| `posFinal` | Posición del conductor al final de la carrera. |
+| `milisegundos` | Tiempo hasta la finalización de la carrera (en milisegundos). |
+| `estado` | Estado de finalización (completada, accidente, descalificado, otro). |
+
+En base a estos datos, se responden los interrogantes enunciados en la sección *Desarrollo*.
+
+# *Desarrollo*
+
+## Estado de finalización de los corredores.
+
+En esta sección se analiza cómo finalizan los corredores de todas las carreras, de todos los equipos y luego; puntualmente, al equipo Mercedes . Se estudia la variable cualitativa "estado de finalización", clasificada en categorías como "completada", "accidente", "descalificado", "otro".
+
+**Estado de finalización general.**
+
+```{r, message=FALSE, warning=FALSE}
+#| echo: false
+#Tablas
+
+frecuencia_general <- resultados %>% 
+  count(estado, name = "frecuencia") %>%
+  mutate(porcentaje = frecuencia / sum(frecuencia))
+
+#Tabla de frecuencias
+
+tabla_con_total <- frecuencia_general %>%
+  mutate(porcentaje = round(porcentaje * 100, 1)) %>%
+  bind_rows(
+    tibble(
+      estado = "Total",
+      frecuencia = sum(.$frecuencia),
+      porcentaje = 100
+    )
+  )
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+#| echo: false
+#Tabla general 
+
+tabla_con_total %>%
+  filter(estado != "Total") %>%
+  arrange(desc(frecuencia)) %>%
+  bind_rows(filter(tabla_con_total, estado == "Total")) %>%
+  gt() %>%
+  tab_header(
+    title = "Tabla 1. Estado de finalización – Todos los equipos"
+  ) %>%
+  cols_label(
+    estado = "Estado",
+    frecuencia = "Frecuencia",
+    porcentaje = "Porcentaje (%)"
+  ) %>%
+  fmt_number(columns = porcentaje, decimals = 1) %>%
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_body(rows = estado == "Total")
+  ) %>%
+  tab_options(
+    table.font.size = "small"
+  )
+```
+
+```{r, message=FALSE, warning=FALSE}
+#| echo: false
+#Grafico de barras. General
+
+ggplot(frecuencia_general, aes(x = reorder(estado, -porcentaje), 
+                               y = porcentaje))+
+  geom_col(fill = "#2C3E50") +
+  geom_text(
+    aes(label = paste0(round(porcentaje * 100, 1), "%")),
+    vjust = -0.5,
+    color = "white",
+    size = 4
+  ) +
+  scale_y_continuous(
+    labels = percent_format(accuracy = 0.1),
+    limits = c(0, 1),
+    expand = expansion(mult = c(0, 0.05))
+  ) +
+  labs(
+    title = "Gráfico 1. Estados de finalización – Todos los equipos",
+    x = "Estado",
+    y = "Porcentaje"
+  ) +
+  
+  theme_minimal()+
+  theme(
+    plot.title = element_text(face = "bold", size = 10, hjust = 0.5),
+    legend.position = "top"
+  )
+
+```
+
+En el análisis general, se observa que aproximadamente el 55% de las carreras finalizan en forma exitosa, es decir, que el corredor completa la carrera. El resto de los casos presenta diversas situaciones que impiden la finalización, destacándose un 39.5% en la categoría “Otro”, que incluye abandonos por fallos mecánicos, problemas técnicos, entre otros motivos distintos a accidentes o descalificaciones. Los accidentes representan el 5.1% del total. Por otro lado, las descalificaciones constituyen un porcentaje pequeño (0.3%), por lo que tienen poco impacto en el panorama general.
+
+**Estado de finalización del equipo Mercedes.**
+
+```{r, message=FALSE, warning=FALSE}
+#| echo: false
+
+#Solo Mercedes
+
+#Tabla
+
+Mercedes <- resultados %>%
+  inner_join(constructores, by = "idConstructor") %>%
+  filter(nombre == "Mercedes") %>%
+  count(estado, name = "frecuencia") %>%
+  mutate(porcentaje = frecuencia / sum(frecuencia))  # proporción (0 a 1)
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+#| echo: false
+# tabla con totales
+
+Mercedes %>%
+  mutate(porcentaje = round(porcentaje * 100, 1)) %>%
+  filter(estado != "Total") %>%
+  arrange(desc(frecuencia)) %>%
+  bind_rows(
+    tibble(
+      estado = "Total",
+      frecuencia = sum(Mercedes$frecuencia),
+      porcentaje = 100
+    )
+  ) %>%
+  gt() %>%
+  tab_header(
+    title = "Tabla 2. Estado de finalización – Mercedes"
+  ) %>%
+  cols_label(
+    estado = "Estado",
+    frecuencia = "Cantidad",
+    porcentaje = "Porcentaje (%)"
+  ) %>%
+  fmt_number(columns = porcentaje, decimals = 1) %>%
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_body(rows = estado == "Total")
+  ) %>%
+  tab_options(
+    table.font.size = "small"
+  )
+```
+
+```{r, message=FALSE, warning=FALSE}
+#| echo: false
+# Grafico de barras
+
+ggplot(Mercedes, aes(x = reorder(estado, -porcentaje), y = porcentaje)) +
+  geom_col(fill = "#2C3E50") +
+  geom_text(
+    aes(label = paste0(round(porcentaje * 100, 1), "%")),
+    vjust = -0.5,
+    color = "white",
+    size = 4
+  ) +
+  scale_y_continuous(
+    labels = percent_format(accuracy = 0.1),
+    expand = expansion(mult = c(0, 0.05)),
+    limits = c(0, 1)
+  ) +
+  labs(
+    title = "Gráfico 2. Estados de finalización – Mercedes",
+    x = "Estado",
+    y = "Porcentaje"
+  ) +
+  
+  theme_minimal()+
+  theme(
+    plot.title = element_text(face = "bold", size = 10, hjust = 0.5),
+    legend.position = "top"
+  )
+
+```
+
+Al focalizar el análisis en el equipo Mercedes, se aprecia un desempeño superior en términos de finalización de carrera. En este caso, el 89.6% de las carreras terminan exitosamente, casi duplicando el porcentaje observado en el análisis general. Asimismo, el porcentaje de accidentes para Mercedes es mucho menor (2.8%). La categoría “Otro” también presenta un porcentaje reducido (7.2%), lo que indica que Mercedes experimenta menos problemas técnicos o abandonos por causas diversas en comparación con el promedio general. La tasa de descalificaciones permanece casi nula (0.4%).
+
+En conclusión, el análisis comparativo evidencia que Mercedes supera el desempeño promedio en cuanto a finalización exitosa de carreras, accidentes y abandonos técnicos, consolidándose como un equipo con una tasa elevada éxito en la Fórmula 1.
+
+## Distribución de tiempos de finalización y carrera atípica
+
+En esta sección se analiza la variable cuantitativa continua, duración de las carreras, de Fórmula 1 entre 2013 y 2023; tomando el tiempo total expresado en minutos. Para explorar la distribución y detectar posibles valores atípicos, se utiliza un diagrama de caja (boxplot).
+
+```{r, message=FALSE, warning=FALSE}
+#| echo: false
+# Preparar datos para el boxplot
+
+tiempos <- resultados %>%
+  drop_na(milisegundos) %>%
+  mutate(tiempo_min = milisegundos / 1000 / 60)
+```
+
+```{r, message=FALSE, warning=FALSE}
+#| echo: false
+# Boxplot
+
+ggplot(tiempos, aes(x = tiempo_min)) +
+  geom_boxplot(fill = "#2C3E50", alpha = 0.8, outlier.color = "red", height = 0.5) +
+  labs(
+    title = "Gráfico 3. Distribución de tiempos de finalización de carreras",
+    x = "Tiempo de finalización (minutos)"
+  ) +
+  scale_x_continuous(limits = c(0, 190), breaks = seq(0, 190, by = 30)) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 10, hjust = 0.5),
+    legend.position = "top"
+  )
+
+```
+
+```{r, message=FALSE, warning=FALSE}
+#| echo: false
+# Calcular cuartiles y RI
+
+cuartiles <- tiempos %>%
+  summarize(
+    Q1 = quantile(tiempo_min, 0.25),
+    Q2 = quantile(tiempo_min, 0.50),
+    Q3 = quantile(tiempo_min, 0.75)
+  ) %>%
+  mutate(
+    RI = Q3 - Q1,
+    limite_inferior = Q1 - 1.5 * RI,
+    limite_superior = Q3 + 1.5 * RI
+  )
+
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+#| echo: false
+
+# Crear tabla con los valores
+
+tibble(
+  Estadístico = c(
+    "Q1 (Primer cuartil)",
+    "Q3 (Tercer cuartil)",
+    "Rango intercuartílico (RI)",
+    "Límite inferior",
+    "Límite superior",
+    "Tiempo mínimo observado",
+    "Tiempo máximo observado"
+  ),
+  Valor = c(
+    88.08,
+    99.84,
+    11.77,
+    70.42,
+    117.50,
+    3.45,
+    183.53 
+  )
+) %>%
+  gt() %>%
+  tab_header(
+    title = "Tabla 1. Estadísticas para detección de valores atípicos 
+    en tiempos de finalización") %>%
+  fmt_number(columns = Valor, decimals = 2) %>%
+  cols_label(
+    Estadístico = "Estadística",
+    Valor = "Valor (minutos)"
+  ) %>%
+  tab_options(
+    table.font.size = "small",
+    data_row.padding = px(3)
+  )
+
+```
+
+El gráfico de boxplot muestra la distribución de los tiempos de finalización de carrera, donde se identifican varios valores atípicos.
+
+El valor mínimo, cercano a 3.5 minutos, se ubica muy por debajo del límite inferior de 70.42 minutos, según la regla de los cuartiles. Esto confirma estadísticamente su carácter atípico extremo inferior. Este valor corresponde al Gran Premio de Bélgica 2021, una carrera con duración excepcionalmente corta. La razón detrás de esta anomalía fue la suspensión de la carrera debido a condiciones climáticas adversas: la lluvia intensa provocó que la competencia se disputara casi toda detrás del Safety Car y se otorgaran solo medio punto, sin reinicio efectivo de la carrera. La información oficial puede consultarse en el sitio de [Formula 1](https://www.formula1.com/en/latest/article.belgian-grand-prix-race-suspended-after-heavy-rainfall-at-spa.2yGfmbWRvu5HxOAxuvmL8k.html).
+
+También se identifican valores atípicos superiores, es decir, tiempos que superan el límite superior de 117,50 minutos. Estas carreras, aunque no excepcionales como Spa 2021, probablemente se vieron afectadas por interrupciones, condiciones climáticas variables o accidentes.
+
+## Distribución de podios entre los tres corredores con más victorias
+
+En esta sección se analiza la variable categórica "posición final", acotada a los tres primeros puestos (1°, 2° y 3°), correspondientes a los corredores que integraron el podio en cada carrera. El análisis se centra exclusivamente en los tres pilotos con mayor cantidad de victorias: Max Verstappen (VER), Lewis Hamilton (HAM) y Valtteri Bottas (BOT).
+
+Se busca describir la distribución de los puestos del podio entre estos corredores, con el objetivo de identificar patrones de desempeño y comparar el tipo de protagonismo que cada uno ha tenido a lo largo de las competencias.
+
+```{r, message=FALSE, warning=FALSE}
+#| echo: false
+# Filtrar corredores del podio (VER, HAM, BOT) y posiciones 1, 2, 3
+
+podios <- resultados %>%
+  inner_join(conductores, by = "idConductor") %>%
+  filter(codigo %in% c("VER", "HAM", "BOT"), posFinal %in% 1:3) %>%
+  mutate(
+    posicion = factor(posFinal, levels = c(1, 2, 3)),  # factor para usar en fill
+    codigo = factor(codigo, levels = c("VER", "HAM", "BOT"))
+  )
+
+# Tabla de frecuencia de podios
+
+tabla_podios <- podios %>%
+  count(codigo, posicion, name = "frecuencia")
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+#| echo: false
+# Mostrar tabla de frecuencia de podios
+
+tabla_podios %>%
+  pivot_wider(names_from = posicion, values_from = frecuencia, values_fill = 0) %>%
+  rename(Piloto = codigo, `1°` = `1`, `2°` = `2`, `3°` = `3`) %>%
+  gt() %>%
+  tab_header(
+    title = "Tabla 3. Distribución de podios por piloto (puestos 1º, 2º y 3º)"
+  ) %>%
+  tab_options(table.font.size = "small")
+```
+
+```{r, message=FALSE, warning=FALSE}
+#| echo: false
+#Grafico de barras de podios
+
+ggplot(tabla_podios, aes(x = codigo, y = frecuencia, fill = posicion)) +
+  geom_col(position = "dodge") +
+  scale_fill_manual(
+    values = c(
+      "1" = "#1B2631",
+      "2" = "#2C3E50",
+      "3" = "#5D6D7E"
+    ),
+    name = "Puesto",
+    labels = c("1º", "2º", "3º")
+  ) +
+  labs(
+    title = "Gráfico 4. Distribución de podios entre VER, HAM y BOT",
+    x = "Piloto",
+    y = "Cantidad de podios"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 10, hjust = 0.5),
+    legend.position = "top"
+  )
+```
+
+El análisis de los podios muestra cómo se distribuyen los primeros, segundos y terceros puestos entre los tres corredores con más victorias. Max Verstappen logró una gran cantidad de primeros puestos. Lewis Hamilton, en cambio, presenta un mayor equilibrio entre primeros y segundos lugares. Valtteri Bottas muestra una presencia destacada en el tercer puesto. Esta distribución permite visualizar el tipo de protagonismo que cada corredor ha tenido en la Fórmula 1 durante el período analizado.
+
+## Tiempos de finalización según presencia de lluvia
+
+En esta sección se analiza la relación entre los tiempos de finalización de las carreras (expresados en minutos) y las condiciones climáticas presentes durante su desarrollo. Para ello, se combinan los datos de tiempos de llegada (provenientes de la tabla resultados) con la información climática registrada en la tabla carreras.
+
+La variable de estudio es cuantitativa continua (tiempo_min) y se agrupa según una variable categórica, lluvia, con categorías “Con lluvia” y “Sin lluvia”). El objetivo es explorar si existen diferencias notables en los tiempos según las condiciones climáticas.
+
+```{r, message=FALSE, warning=FALSE}
+#| echo: false
+tiempos_lluvia <- resultados %>%
+  inner_join(carreras, by = "idCarrera") %>%
+  filter(!is.na(milisegundos)) %>%
+  mutate(
+    tiempo_min = round(milisegundos / 1000 / 60, 1 ),
+    lluvia = if_else(lluvia, "Con lluvia", "Sin lluvia")
+  )
+```
+
+```{r, message=FALSE, warning=FALSE}
+#| echo: false
+#Boxplot
+
+ggplot(tiempos_lluvia, aes(x = lluvia, y = tiempo_min, fill = lluvia)) +
+  geom_boxplot(alpha = 0.8, outlier.color = "red", width = 0.5) +
+  scale_fill_manual(values = c("Con lluvia" = "#2C3E50", 
+                               "Sin lluvia" = "#5D6D7E")) +
+  labs(
+    title = "Gráfico 5. Comparación de tiempos de finalización 
+    según presencia de lluvia",
+    x = "Condición climática",
+    y = "Tiempo de finalización (minutos)"
+  ) +
+  scale_y_continuous(limits = c(0, 190), breaks = seq(0, 190, by = 30)) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 10, hjust = 0.5),
+    legend.position = "none"
+  )
+
+```
+
+El gráfico compara la distribución de los tiempos de finalización entre carreras con y sin lluvia. Se observa que las carreras disputadas bajo condiciones de lluvia tienden a tener una mayor dispersión y, en algunos casos, mayores tiempos. Esto puede explicarse por la menor visibilidad, el menor agarre y la frecuencia de accidentes o neutralizaciones (como Safety Car), que son más comunes en condiciones climáticas adversas.
+
+## Relación entre temperatura del aire y temperatura de la pista
+
+En esta sección se analiza la relación entre la temperatura atmosférica y la temperatura de la pista al momento de la carrera. Ambas variables son cuantitativas continuas y provienen de la tabla carreras.
+
+Se espera encontrar una asociación positiva, dado que a mayor temperatura ambiente, generalmente se eleva también la temperatura del asfalto. Para evaluar esta relación, se emplea un gráfico de dispersión que permite observar la tendencia conjunta y posibles patrones lineales entre ambas variables.
+
+```{r, message=FALSE, warning=FALSE}
+#| echo: false
+temperaturas <- carreras %>%
+  filter(!is.na(tempAire), !is.na(tempPista))
+```
+
+```{r, message=FALSE, warning=FALSE}
+#| echo: false
+#Gráfico de dispersión
+ggplot(temperaturas, aes(x = tempAire, y = tempPista)) +
+  geom_point(color = "#1F77B4", alpha = 0.7, size = 2) +
+  geom_smooth(method = "lm", se = FALSE, color = "#D62728", linetype = "dashed") +
+  scale_x_continuous(
+    limits = c(5, 40),
+    name = "Temperatura del aire (°C)"
+  ) +
+  scale_y_continuous(
+    limits = c(5, 60),
+    name = "Temperatura de la pista (°C)"
+  ) +
+  labs(
+    title = "Gráfico 6. Relación entre temperatura atmosférica y de pista"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 10, hjust = 0.5)
+  )
+
+cor(temperaturas$tempAire, temperaturas$tempPista, use = "complete.obs")
+```
+
+El gráfico de dispersión muestra una clara relación creciente entre la temperatura del aire y la temperatura de la pista. A medida que aumenta la temperatura atmosférica, también lo hace la del circuito.
+
+Esta relación fue reforzada mediante una recta de ajuste lineal que evidencia una tendencia positiva. Además, se calculó la correlación de Pearson, que resultó en un valor de r ≈ 0.67, lo cual indica una asociación moderada positiva entre ambas variables.
+
+Los datos se concentran mayormente en el rango de 15 a 35°C en el aire y de 20 a 50°C en la pista. Esto confirma la influencia directa de las condiciones ambientales sobre el estado del circuito.
+
+Sin embargo, aunque la relación es moderada y positiva, se observa una dispersión considerable de puntos alrededor de la recta de ajuste, lo que sugiere que podrían estar influyendo otras variables no consideradas en este análisis. Factores adicionales, como la humedad, la velocidad del viento, la radiación solar o incluso el calor generado por los propios autos en la pista, podrían afectar la temperatura y explicar la variabilidad observada en los datos.
+
+## Conclusión
+
+En este trabajo se llevó a cabo un análisis exploratorio de datos (AED) sobre la Fórmula 1, abordando variables categóricas y numéricas vinculadas a los resultados de carrera, condiciones climáticas y desempeño de pilotos y equipos.
+
+A través de gráficos, tablas y medidas estadísticas, se identificaron patrones clave como la alta proporción de finalizaciones completas, la duración típica de las carreras y la presencia de valores atípicos extremos, como el caso del **Gran Premio de Bélgica 2021**. Asimismo, se exploró la influencia de la **lluvia** en los tiempos de finalización, la distribución de **podios** entre los corredores más destacados, y la relación entre variables continuas como la **temperatura del aire** y la **temperatura de la pista**.
+
+La aplicación de herramientas estadísticas y visuales permitió no solo describir los datos, sino también detectar comportamientos excepcionales y entender mejor el contexto competitivo y climático de la Fórmula 1. Estos hallazgos destacan la importancia del **análisis exploratorio de datos (AED)** como paso fundamental para interpretar grandes volúmenes de información y guiar futuras investigaciones o decisiones estratégicas.
